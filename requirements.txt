@@ -5,8 +5,4 @@ yfinance
 ta
 matplotlib
 plotly
-MetaTrader5
 requests
-scikit-learn
-beautifulsoup4
-lxml
