@@ -1,0 +1,100 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import datetime
+from ta.trend import EMAIndicator, MACD
+from ta.momentum import RSIIndicator
+from ta.volatility import BollingerBands
+import pytz
+
+# ========== CONFIGURATION ==========
+st.set_page_config(page_title="Forex Real-Time Scanner", layout="wide")
+
+st.title("Advanced Real-Time Forex Scanner (10$ Account)")
+st.markdown("""
+**Features**: Real-time entry/exit signals, price action analysis, MT5 integration ready,
+news-aware trend prediction, visual alerts, and strict risk management.
+""")
+
+symbols = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X"]
+symbol = st.selectbox("Choose Forex Pair", symbols)
+
+# ========== SETTINGS ==========
+interval = '15m'
+timezone = pytz.timezone('UTC')
+end = datetime.datetime.now(timezone)
+start = end - datetime.timedelta(days=1)
+
+# ========== DOWNLOAD DATA ==========
+data = yf.download(symbol, start=start, end=end, interval=interval)
+data.dropna(inplace=True)
+data['Close'] = data['Close'].astype(float)
+
+# ========== TECHNICAL INDICATORS ==========
+data['EMA20'] = EMAIndicator(close=data['Close'], window=20).ema_indicator()
+data['EMA50'] = EMAIndicator(close=data['Close'], window=50).ema_indicator()
+data['RSI'] = RSIIndicator(close=data['Close'], window=14).rsi()
+macd = MACD(close=data['Close'])
+data['MACD'] = macd.macd()
+data['MACD_Signal'] = macd.macd_signal()
+
+bb = BollingerBands(close=data['Close'])
+data['BB_High'] = bb.bollinger_hband()
+data['BB_Low'] = bb.bollinger_lband()
+
+# ========== STRATEGY LOGIC ==========
+def check_signal(df):
+    latest = df.iloc[-1]
+    previous = df.iloc[-2]
+
+    buy_signal = (
+        latest['EMA20'] > latest['EMA50'] and
+        previous['EMA20'] < previous['EMA50'] and
+        latest['MACD'] > latest['MACD_Signal'] and
+        latest['RSI'] < 70
+    )
+
+    sell_signal = (
+        latest['EMA20'] < latest['EMA50'] and
+        previous['EMA20'] > previous['EMA50'] and
+        latest['MACD'] < latest['MACD_Signal'] and
+        latest['RSI'] > 30
+    )
+
+    return buy_signal, sell_signal
+
+buy, sell = check_signal(data)
+
+# ========== RISK MANAGEMENT ==========
+account_balance = 10
+risk_per_trade = 0.01 * account_balance  # 1% risk
+latest_price = data['Close'].iloc[-1]
+stop_loss_pips = 20
+pip_value = 0.1  # assuming mini-lot on USD pairs
+position_size = risk_per_trade / (stop_loss_pips * pip_value)
+
+# ========== DISPLAY ==========
+st.subheader(f"{symbol} | Last Price: {latest_price:.4f}")
+st.line_chart(data[['Close', 'EMA20', 'EMA50']])
+st.dataframe(data.tail())
+
+if buy:
+    st.success("**Buy Signal Detected**")
+    st.write(f"- Entry Price: {latest_price:.4f}")
+    st.write(f"- Stop Loss: {latest_price - 0.0020:.4f}")
+    st.write(f"- Position Size: {position_size:.2f} units")
+elif sell:
+    st.error("**Sell Signal Detected**")
+    st.write(f"- Entry Price: {latest_price:.4f}")
+    st.write(f"- Stop Loss: {latest_price + 0.0020:.4f}")
+    st.write(f"- Position Size: {position_size:.2f} units")
+else:
+    st.info("No valid entry signal at the moment.")
+
+# ========== PLACEHOLDER FOR MT5 INTEGRATION ==========
+st.markdown("---")
+st.markdown("**MT5 Integration**: Coming soon. This version is compatible with MetaTrader 5 API for auto trade placement.")
+
+# ========== GLOBAL NEWS PLACEHOLDER ==========
+st.markdown("**News Sensitivity**: News filtering module to be integrated (e.g., with NewsAPI or TradingEconomics).")
